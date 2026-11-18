@@ -298,7 +298,7 @@ function adminCaja(){
 
 function render(){
  const R=route(),el=$("#app");let h;
- if(SB_URL.indexOf("PEGA_AQUI")>=0){el.innerHTML='<div class="card"><b>Falta un dato de configuración</b><p class="mut">Abre index.html con el Bloc de notas y pega la URL de tu proyecto de Supabase en la línea que empieza con const SB_URL.</p></div>';return}
+ if(SB_URL.indexOf("https://supabase.com/dashboard/project/kgctfjaqcrplsgvpwncv")>=0){el.innerHTML='<div class="card"><b>Falta un dato de configuración</b><p class="mut">Abre index.html con el Bloc de notas y pega la URL de tu proyecto de Supabase en la línea que empieza con const SB_URL.</p></div>';return}
  const staffRoute=R.t==="mesero"||R.t==="cocina"||R.t==="personal"||R.t==="admin";
  if(staffRoute&&!ses)h=gate();
  else if(R.t==="landing")h=landing();
