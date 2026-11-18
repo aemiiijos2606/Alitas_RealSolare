@@ -112,7 +112,7 @@ async function load(force){
  finally{if(my===tok)inflight=false}
 }
 function sync(){cart={};nota="";tk=null;cerrando=null;form=null;cajaRep=null;loaded=false;sig="";errMsg="";tok++;inflight=false;const x=location.hash.match(/^#mesero-(\d+)$/);if(x)mm=x[1];render();load();getRol()}
-async function getRol(){if(!ses||ses.rol)return;try{const r=await rpc("mi_rol",{},true);if(ses){ses.rol=r||"personal";setSes(ses)}render();load()}catch(e){}}
+async function getRol(){if(!ses)return;try{const r=(await rpc("mi_rol",{},true))||"personal";const ch=!!ses&&ses.rol!==r;if(ses){ses.rol=r;setSes(ses)}if(ch){render();load()}}catch(e){}}
 const isAdmin=()=>!!ses&&ses.rol==="admin";
 addEventListener("hashchange",sync);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)load()});
@@ -194,7 +194,7 @@ function ticketHTML(t){
 function qrHTML(){let h='<h2>Códigos QR de las mesas</h2><div class="card"><div class="mut">Uno por mesa. Cada código abre la vista de esa mesa.</div><p>Dirección pública de tu página: <input style="width:100%" value="'+esc(BASE)+'" onchange="setBase(this.value)"></p><p>Número de mesas: <input type="number" min="1" max="30" value="'+nMesas+'" onchange="nMesas=Math.min(30,Math.max(1,+this.value||1));render()"></p><div class="cols">';for(let n=1;n<=nMesas;n++)h+='<div style="text-align:center"><div class="qr" data-url="'+esc(BASE)+'#cliente-'+n+'" style="background:#fff;padding:8px;border-radius:8px;display:inline-block"></div><div><b>Mesa '+n+'</b></div></div>';return h+'</div></div>'}
 function drawQR(){if(!window.QRCode)return;document.querySelectorAll(".qr").forEach(el=>{el.innerHTML="";try{new QRCode(el,{text:el.dataset.url,width:140,height:140})}catch(e){}})}
 
-function home(){return '<h1>Panel del personal</h1><p><button class="g" onclick="logout()">Cerrar sesión</button></p>'+
+function home(){return '<h1>Panel del personal</h1><p><button class="g" onclick="logout()">Cerrar sesión</button></p><div class="mut">Tu rol: '+(ses.rol?(ses.rol==="admin"?"administrador":"personal"):"verificando…")+'</div>'+
  '<div class="card"><b>Mesero</b><div class="mut">Toma pedidos, atiende llamadas, ve tickets y cierra cuentas.</div><p><a class="b" href="#mesero">Abrir</a></p></div>'+
  '<div class="card"><b>Cocina</b><div class="mut">Recibe pedidos, cambia su estatus y marca lo que se acabó.</div><p><a class="b" href="#cocina">Abrir</a></p></div>'+
  (isAdmin()?'<div class="card"><b>Administración</b><div class="mut">Promociones, menú y cierre de caja (solo gerente).</div><p><a class="b" href="#admin">Promociones y menú</a> <a class="b" href="#admin-caja">Caja</a></p></div>':'')+
