@@ -29,6 +29,8 @@ textarea{font:inherit;padding:8px;border:1px solid var(--ln);border-radius:8px;b
 button:disabled{opacity:.5;cursor:default}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:#15803d;color:#fff;padding:10px 18px;border-radius:10px;font-size:15px;z-index:20;display:none;max-width:90%;text-align:center}
 ul{margin:8px 0 0;padding-left:20px}
+.ph{width:72px;height:54px;object-fit:cover;border-radius:8px;flex:none;background:var(--ln)}
+.lft{display:flex;align-items:center;gap:12px;min-width:0}
 hr{border:0;border-top:1px dashed var(--ln);margin:10px 0}
 @media print{
  body *{visibility:hidden}
@@ -48,7 +50,7 @@ const SB_KEY="sb_publishable_s1g8dLamBa1LdSp4L0J7-w_nP5Ea4m2";
 const NOMBRE="Restaurante"; /* nombre que sale en el ticket: cámbialo por el de tu restaurante */
 const $=s=>document.querySelector(s);
 let cart={},mm="",nota="",abiertos={},nMesas=3,menu=[],orders=[],E=null,P={cuentas:[],llamadas:[]},tk=null;
-let A=null,form=null,cajaRep=null,cerrando=null;
+let A=null,pform=null,cajaRep=null,cerrando=null;
 let loaded=false,sig="",errMsg="",tok=0,busy=false,inflight=false;
 let ses=null;try{ses=JSON.parse(localStorage.getItem("qr_ses")||"null")}catch(e){}
 let BASE=(()=>{try{const s=localStorage.getItem("qr_base");if(s)return s}catch(e){}return location.origin+location.pathname})();
@@ -111,7 +113,7 @@ async function load(force){
  }catch(x){if(my===tok&&!loaded){errMsg=x.message;render()}}
  finally{if(my===tok)inflight=false}
 }
-function sync(){cart={};nota="";tk=null;cerrando=null;form=null;cajaRep=null;loaded=false;sig="";errMsg="";tok++;inflight=false;const x=location.hash.match(/^#mesero-(\d+)$/);if(x)mm=x[1];render();load();getRol()}
+function sync(){cart={};nota="";tk=null;cerrando=null;pform=null;cajaRep=null;loaded=false;sig="";errMsg="";tok++;inflight=false;const x=location.hash.match(/^#mesero-(\d+)$/);if(x)mm=x[1];render();load();getRol()}
 async function getRol(){if(!ses)return;try{const r=(await rpc("mi_rol",{},true))||"personal";const ch=!!ses&&ses.rol!==r;if(ses){ses.rol=r;setSes(ses)}if(ch){render();load()}}catch(e){}}
 const isAdmin=()=>!!ses&&ses.rol==="admin";
 addEventListener("hashchange",sync);
@@ -176,8 +178,9 @@ function menuHTML(){
  const g={};menu.forEach(i=>{(g[i.categoria]=g[i.categoria]||[]).push(i)});
  return Object.keys(g).map(cat=>'<h2>'+(g[cat][0].promo?'🔥 ':'')+esc(cat)+'</h2>'+g[cat].map(i=>{
   const pr=(i.precio_normal?'<s>'+money(i.precio_normal)+'</s> ':'')+'<b>'+money(i.precio)+'</b>'+(i.promo?' <span class="tag Listo">Promo</span>':'');
-  if(i.agotado)return '<div class="card row" style="opacity:.6"><div>'+esc(i.nombre)+'<div class="mut">'+pr+'</div></div><span class="tag Nuevo">Agotado</span></div>';
-  return '<div class="card row"><div>'+esc(i.nombre)+'<div class="mut">'+pr+'</div></div><div class="row">'+
+  const img='<img class="ph" loading="lazy" alt="" src="'+fotoAttr(i)+'" onerror="this.onerror=null;this.src=GEN">';
+  if(i.agotado)return '<div class="card row" style="opacity:.6"><div class="lft">'+img+'<div>'+esc(i.nombre)+'<div class="mut">'+pr+'</div></div></div><span class="tag Nuevo">Agotado</span></div>';
+  return '<div class="card row"><div class="lft">'+img+'<div>'+esc(i.nombre)+'<div class="mut">'+pr+'</div></div></div><div class="row">'+
   '<button class="g q" onclick="chg('+i.id+',-1)">−</button><b>'+(cart[i.id]||0)+'</b>'+
   '<button class="q" onclick="chg('+i.id+',1)">+</button></div></div>'}).join("")).join("")}
 function ordHTML(o){return '<div class="card"><div class="row"><b>Pedido #'+o.id+'</b><span class="tag '+o.estado+'">'+o.estado+'</span></div><div class="mut">'+itemsTxt(o)+'</div>'+noteLine(o)+'</div>'}
@@ -242,36 +245,73 @@ function cierreHTML(){
  ["efectivo","tarjeta","transferencia"].map(x=>'<button class="'+(cerrando.metodo===x?'':'g')+'" onclick="setMetodo(\''+x+'\')">'+cap(x)+'</button>').join(" ")+
  '</p><p><button onclick="confirmarCierre()">Confirmar y generar ticket</button> <button class="g" onclick="cerrando=null;render()">Cancelar</button></p></div>'}
 function adminNav(){return '<nav><a class="b" href="#personal">Panel</a><a class="b" href="#admin">Promociones y menú</a><a class="b" href="#admin-caja">Caja</a></nav>'}
-function nuevoProd(promo){form={id:null,nombre:"",categoria:promo?"Promociones":"",precio:"",promo:promo,precio_normal:"",desde:"",hasta:"",activo:true};render();scrollTo(0,0)}
+function nuevoProd(promo){pform={id:null,nombre:"",categoria:promo?"Promociones":"",precio:"",promo:promo,precio_normal:"",desde:"",hasta:"",activo:true,foto:""};render();scrollTo(0,0)}
 function editar(id){const p=A.find(x=>x.id===id);if(!p)return;
- form={id:p.id,nombre:p.nombre,categoria:p.categoria,precio:p.precio,promo:p.promo,precio_normal:p.precio_normal==null?"":p.precio_normal,desde:fi(p.vigente_desde),hasta:fi(p.vigente_hasta),activo:p.activo};render();scrollTo(0,0)}
+ pform={id:p.id,nombre:p.nombre,categoria:p.categoria,precio:p.precio,promo:p.promo,precio_normal:p.precio_normal==null?"":p.precio_normal,desde:fi(p.vigente_desde),hasta:fi(p.vigente_hasta),activo:p.activo,foto:p.foto_url||""};render();scrollTo(0,0)}
 async function guardarProd(){
- const f=form;
- try{await rpc("admin_guardar_producto",{p_id:f.id,p_nombre:f.nombre,p_categoria:f.categoria,p_precio:+f.precio,p_promo:f.promo,p_precio_normal:f.precio_normal===""?null:+f.precio_normal,p_desde:f.desde?new Date(f.desde).toISOString():null,p_hasta:f.hasta?new Date(f.hasta).toISOString():null,p_activo:f.activo},true);
-  form=null;toast("✅ Guardado");await load(true)}catch(x){toast(x.message,true)}}
+ const f=pform;
+ try{await rpc("admin_guardar_producto",{p_id:f.id,p_nombre:f.nombre,p_categoria:f.categoria,p_precio:+f.precio,p_promo:f.promo,p_precio_normal:f.promo&&f.precio_normal!==""?+f.precio_normal:null,p_desde:f.promo&&f.desde?new Date(f.desde).toISOString():null,p_hasta:f.promo&&f.hasta?new Date(f.hasta).toISOString():null,p_activo:f.activo,p_foto:f.foto||null},true);
+  pform=null;toast("✅ Guardado");await load(true)}catch(x){toast(x.message,true)}}
 async function activar(id,on){try{await rpc("admin_activar_producto",{p_id:id,p_activo:on},true);await load(true)}catch(x){toast(x.message,true)}}
 async function eliminar(id){
  if(!confirm("¿Borrar este producto del menú? Los tickets anteriores no cambian."))return;
  try{await rpc("admin_eliminar_producto",{p_id:id},true);await load(true)}catch(x){toast(x.message,true)}}
-function formHTML(){const f=form;
- return '<div class="card"><b>'+(f.id?'Editar ':'Nueva ')+(f.promo?'promoción':'producto')+'</b>'+
- '<p>Nombre<br><input style="width:100%" value="'+esc(f.nombre)+'" oninput="form.nombre=this.value"></p>'+
- '<p>Categoría<br><input style="width:100%" list="cats" value="'+esc(f.categoria)+'" oninput="form.categoria=this.value"><datalist id="cats">'+[...new Set(A.map(p=>p.categoria))].map(c=>'<option value="'+esc(c)+'">').join("")+'</datalist></p>'+
- '<p>Precio ($)<br><input type="number" min="0" step="0.5" value="'+esc(f.precio)+'" oninput="form.precio=this.value"></p>'+
- '<p><label><input type="checkbox" style="width:auto" '+(f.promo?"checked":"")+' onchange="form.promo=this.checked"> Es promoción</label></p>'+
- '<p>Precio normal (opcional, se muestra tachado)<br><input type="number" min="0" step="0.5" value="'+esc(f.precio_normal)+'" oninput="form.precio_normal=this.value"></p>'+
- '<p>Vigente desde (opcional)<br><input type="datetime-local" style="width:auto" value="'+esc(f.desde)+'" onchange="form.desde=this.value"></p>'+
- '<p>Vigente hasta (opcional)<br><input type="datetime-local" style="width:auto" value="'+esc(f.hasta)+'" onchange="form.hasta=this.value"></p>'+
- '<p><label><input type="checkbox" style="width:auto" '+(f.activo?"checked":"")+' onchange="form.activo=this.checked"> Activo</label></p>'+
- '<p><button onclick="guardarProd()">Guardar</button> <button class="g" onclick="form=null;render()">Cancelar</button></p></div>'}
+/* ---------- fotos: ilustraciones de ejemplo y subida ---------- */
+const SVG={
+tacos:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#fde8c8"/><ellipse cx="100" cy="112" rx="84" ry="17" fill="#fff"/><defs><g id="t"><path d="M30 108a28 28 0 0 1 56 0z" fill="#f4c76a"/><path d="M38 100q6-14 12-5q6-13 12-3q6-11 12 8z" fill="#b45309"/><circle cx="48" cy="92" r="3" fill="#16a34a"/><circle cx="62" cy="90" r="2.5" fill="#facc15"/><circle cx="72" cy="96" r="2.5" fill="#16a34a"/></g></defs><use href="#t"/><use href="#t" x="45"/><use href="#t" x="90"/></svg>`,
+enchiladas:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#e7f5e3"/><ellipse cx="100" cy="108" rx="84" ry="20" fill="#fff"/><rect x="38" y="64" width="124" height="18" rx="9" fill="#f4c76a"/><rect x="38" y="80" width="124" height="18" rx="9" fill="#efbb5a"/><rect x="38" y="96" width="124" height="16" rx="8" fill="#f4c76a"/><path d="M34 86q66-36 132 0q-4 22-66 22q-62 0-66-22z" fill="#4ade80" fill-opacity=".92"/><path d="M60 80q14-8 28 0t28 0t28 0" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round"/><circle cx="70" cy="92" r="3" fill="#166534"/><circle cx="104" cy="96" r="3" fill="#166534"/><circle cx="136" cy="90" r="3" fill="#166534"/></svg>`,
+hamburguesa:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#ffe9d6"/><path d="M50 68a50 40 0 0 1 100 0z" fill="#e8a24b"/><ellipse cx="80" cy="46" rx="4" ry="2" fill="#fff4d6"/><ellipse cx="102" cy="40" rx="4" ry="2" fill="#fff4d6"/><ellipse cx="122" cy="50" rx="4" ry="2" fill="#fff4d6"/><path d="M45 70q8 8 16 0t16 0t16 0t16 0t16 0v6h-80z" fill="#4ade80"/><rect x="48" y="76" width="104" height="8" rx="4" fill="#ef4444"/><path d="M48 84h104l-14 9l-14-9z" fill="#facc15"/><rect x="46" y="86" width="108" height="14" rx="7" fill="#6b3a1e" fill-opacity=".92"/><path d="M50 102h100a10 10 0 0 1-10 14h-80a10 10 0 0 1-10-14z" fill="#e8a24b"/></svg>`,
+ensalada:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#eaf7e4"/><circle cx="70" cy="66" r="15" fill="#22c55e"/><circle cx="100" cy="56" r="17" fill="#4ade80"/><circle cx="130" cy="66" r="15" fill="#16a34a"/><circle cx="86" cy="52" r="12" fill="#86efac"/><circle cx="116" cy="50" r="12" fill="#22c55e"/><circle cx="92" cy="66" r="6" fill="#ef4444"/><circle cx="122" cy="62" r="6" fill="#ef4444"/><circle cx="76" cy="56" r="5" fill="#d9f99d"/><path d="M38 72h124a62 46 0 0 1-124 0z" fill="#fff" stroke="#d6d3d1" stroke-width="3"/></svg>`,
+jamaica:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#fce7f3"/><rect x="108" y="14" width="6" height="72" rx="3" fill="#f43f5e" transform="rotate(12 111 50)"/><path d="M73 48h54l-6 70H79z" fill="#be123c"/><rect x="82" y="58" width="16" height="16" rx="3" fill="#fecdd3" fill-opacity=".6"/><rect x="104" y="72" width="16" height="16" rx="3" fill="#fecdd3" fill-opacity=".6"/><path d="M70 30h60l-8 90H78z" fill="#fff" fill-opacity=".35" stroke="#9f1239" stroke-width="3"/><circle cx="150" cy="40" r="8" fill="#e11d48"/><circle cx="160" cy="50" r="8" fill="#fb7185"/><circle cx="148" cy="54" r="5" fill="#fff1f2"/></svg>`,
+refresco:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#e0f2fe"/><circle cx="52" cy="40" r="6" fill="#bae6fd"/><circle cx="150" cy="60" r="9" fill="#bae6fd"/><circle cx="40" cy="95" r="8" fill="#bae6fd"/><circle cx="160" cy="105" r="5" fill="#bae6fd"/><rect x="75" y="25" width="50" height="95" rx="9" fill="#dc2626"/><path d="M75 65q25-14 50 0v18q-25-14-50 0z" fill="#fff"/><rect x="80" y="19" width="40" height="9" rx="3" fill="#cbd5e1"/><rect x="82" y="34" width="6" height="70" rx="3" fill="#fff" fill-opacity=".3"/></svg>`,
+cerveza:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#fef3c7"/><path d="M125 55h14a12 12 0 0 1 12 12v16a12 12 0 0 1-12 12h-14" fill="none" stroke="#d97706" stroke-width="8"/><path d="M65 40h60v70a10 10 0 0 1-10 10H75a10 10 0 0 1-10-10z" fill="#f59e0b"/><rect x="74" y="52" width="6" height="58" rx="3" fill="#fde68a" fill-opacity=".6"/><circle cx="75" cy="36" r="12" fill="#fff"/><circle cx="95" cy="30" r="14" fill="#fff"/><circle cx="115" cy="36" r="12" fill="#fff"/><circle cx="100" cy="80" r="3" fill="#fde68a"/><circle cx="108" cy="95" r="2.5" fill="#fde68a"/></svg>`,
+flan:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#fff1e0"/><ellipse cx="100" cy="112" rx="72" ry="14" fill="#fff"/><path d="M55 110q0-50 45-50q45 0 45 50z" fill="#f6c453"/><path d="M58 92q0-32 42-32q42 0 42 32q-8 10-14 0q-8 12-16 0q-8 10-16 0q-8 12-16 0q-8 10-14 0q-6 6-8 0z" fill="#b45309"/><circle cx="84" cy="72" r="5" fill="#fff" fill-opacity=".35"/></svg>`,
+michelada:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#ffedd5"/><path d="M65 52h70l-6 66H71z" fill="#f97316"/><rect x="76" y="64" width="14" height="14" rx="3" fill="#fff" fill-opacity=".45"/><rect x="104" y="80" width="14" height="14" rx="3" fill="#fff" fill-opacity=".45"/><path d="M62 30h76l-9 90H71z" fill="#fff" fill-opacity=".3" stroke="#7c2d12" stroke-width="3"/><rect x="60" y="26" width="80" height="9" rx="4" fill="#dc2626"/><path d="M118 24a26 26 0 0 1 26 26h-26z" fill="#fbbf24"/><circle cx="80" cy="28" r="9" fill="#84cc16"/><circle cx="80" cy="28" r="5" fill="#d9f99d"/></svg>`,
+gen:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#f5f5f4"/><circle cx="100" cy="70" r="40" fill="#fff" stroke="#d6d3d1" stroke-width="4"/><circle cx="100" cy="70" r="26" fill="none" stroke="#e7e5e4" stroke-width="3"/><path d="M44 38v18q0 7 6 7v34M156 38q12 12 0 36v24" stroke="#a8a29e" stroke-width="4" fill="none" stroke-linecap="round"/></svg>`};
+const DEMO=[[/michelada/i,"michelada"],[/taco/i,"tacos"],[/enchilada/i,"enchiladas"],[/hamburgues/i,"hamburguesa"],[/ensalada/i,"ensalada"],[/jamaica/i,"jamaica"],[/refresco|soda|cola/i,"refresco"],[/cerveza/i,"cerveza"],[/flan/i,"flan"]];
+const svgUri=k=>"data:image/svg+xml;utf8,"+encodeURIComponent(SVG[k]);
+const GEN=svgUri("gen");
+const fotoDe=p=>p.foto_url||svgUri((DEMO.find(d=>d[0].test(p.nombre||""))||[0,"gen"])[1]);
+const fotoAttr=p=>esc(fotoDe(p)).replace(/"/g,"&quot;");
+function achicar(file){return new Promise((ok,no)=>{
+ const img=new Image(),u=URL.createObjectURL(file);
+ img.onload=()=>{const k=Math.min(1,900/Math.max(img.width,img.height)),c=document.createElement("canvas");c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+  c.getContext("2d").drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(b=>b?ok(b):no(new Error("No se pudo procesar la imagen")),"image/jpeg",0.82)};
+ img.onerror=()=>{URL.revokeObjectURL(u);no(new Error("No se pudo leer la imagen"))};img.src=u})}
+async function subirFoto(inp){
+ const file=inp.files&&inp.files[0];if(!file)return;
+ if(!/^image\//.test(file.type)){toast("Elige un archivo de imagen",true);return}
+ toast("Subiendo foto…");
+ try{
+  const blob=await achicar(file);
+  await refresh();if(!ses)throw new Error("Sesión vencida, entra de nuevo");
+  const name="p_"+Date.now()+"_"+Math.random().toString(36).slice(2,8)+".jpg";
+  const r=await fetch(SB_URL+"/storage/v1/object/productos/"+name,{method:"POST",headers:{apikey:SB_KEY,Authorization:"Bearer "+ses.access_token,"Content-Type":"image/jpeg"},body:blob});
+  const t=await r.text();let d=null;try{d=JSON.parse(t)}catch(e){}
+  if(!r.ok)throw new Error((d&&(d.message||d.error))||"No se pudo subir la foto");
+  pform.foto=SB_URL+"/storage/v1/object/public/productos/"+name;render();toast("✅ Foto lista. Presiona Guardar para aplicarla");
+ }catch(x){toast(x.message,true)}}
+function quitarFoto(){pform.foto="";render()}
+function formHTML(){const f=pform;
+ return '<div class="card"><b>'+(f.id?'Editar':'Nuevo')+' producto</b>'+
+ '<p>Nombre<br><input style="width:100%" value="'+esc(f.nombre)+'" oninput="pform.nombre=this.value"></p>'+
+ '<p>Categoría<br><input style="width:100%" list="cats" value="'+esc(f.categoria)+'" oninput="pform.categoria=this.value"><datalist id="cats">'+[...new Set(A.map(p=>p.categoria))].map(c=>'<option value="'+esc(c)+'">').join("")+'</datalist></p>'+
+ '<p>Precio ($)<br><input type="number" min="0" step="0.5" value="'+esc(f.precio)+'" oninput="pform.precio=this.value"></p>'+
+ '<p>Foto (opcional)<br><img class="ph" style="width:140px;height:100px" alt="" src="'+fotoAttr({nombre:f.nombre,foto_url:f.foto})+'" onerror="this.onerror=null;this.src=GEN"><br><span class="mut">'+(f.foto?'Foto subida':'Ilustración de ejemplo: sube tu foto para reemplazarla')+'</span><br><input type="file" accept="image/*" style="width:100%" onchange="subirFoto(this)">'+(f.foto?' <button class="g" onclick="quitarFoto()">Quitar foto</button>':'')+'</p>'+
+ '<p><label><input type="checkbox" style="width:auto" '+(f.promo?"checked":"")+' onchange="pform.promo=this.checked;render()"> Es promoción (opcional)</label></p>'+
+ (f.promo?'<div class="card"><p>Precio normal (opcional, se muestra tachado)<br><input type="number" min="0" step="0.5" value="'+esc(f.precio_normal)+'" oninput="pform.precio_normal=this.value"></p>'+
+ '<p>Vigente desde (opcional)<br><input type="datetime-local" style="width:auto" value="'+esc(f.desde)+'" onchange="pform.desde=this.value"></p>'+
+ '<p>Vigente hasta (opcional)<br><input type="datetime-local" style="width:auto" value="'+esc(f.hasta)+'" onchange="pform.hasta=this.value"></p></div>':'')+
+ '<p><label><input type="checkbox" style="width:auto" '+(f.activo?"checked":"")+' onchange="pform.activo=this.checked"> Activo</label></p>'+
+ '<p><button onclick="guardarProd()">Guardar</button> <button class="g" onclick="pform=null;render()">Cancelar</button></p></div>'}
 function adminMenu(){
  let h=adminNav()+'<h1>Promociones y menú</h1><p><button onclick="nuevoProd(true)">+ Nueva promoción</button> <button class="g" onclick="nuevoProd(false)">+ Nuevo producto</button></p>';
- if(form)h+=formHTML();
- h+=A.map(p=>'<div class="card"><div class="row"><div><b>'+esc(p.nombre)+'</b> '+(p.promo?'<span class="tag Listo">Promo</span> ':'')+
+ if(pform)h+=formHTML();
+ h+=A.map(p=>'<div class="card"><div class="row"><div class="lft"><img class="ph" loading="lazy" alt="" src="'+fotoAttr(p)+'" onerror="this.onerror=null;this.src=GEN"><div><b>'+esc(p.nombre)+'</b> '+(p.promo?'<span class="tag Listo">Promo</span> ':'')+
   (!p.activo?'<span class="tag Entregado">Inactivo</span>':!p.visible?'<span class="tag Nuevo">Fuera de vigencia</span>':'<span class="tag Listo">Visible</span>')+
   '<div class="mut">'+esc(p.categoria)+' · '+(p.precio_normal?'<s>'+money(p.precio_normal)+'</s> ':'')+money(p.precio)+
   (p.vigente_desde||p.vigente_hasta?' · '+(p.vigente_desde?'desde '+fmt(p.vigente_desde):'')+(p.vigente_hasta?' hasta '+fmt(p.vigente_hasta):''):'')+'</div></div>'+
-  '<span class="row"><button class="g" onclick="editar('+p.id+')">Editar</button><button class="g" onclick="activar('+p.id+','+(!p.activo)+')">'+(p.activo?'Desactivar':'Activar')+'</button><button class="g" onclick="eliminar('+p.id+')">Borrar</button></span></div></div>').join("");
+  '</div><span class="row"><button class="g" onclick="editar('+p.id+')">Editar</button><button class="g" onclick="activar('+p.id+','+(!p.activo)+')">'+(p.activo?'Desactivar':'Activar')+'</button><button class="g" onclick="eliminar('+p.id+')">Borrar</button></span></div></div>').join("");
  return h}
 function cajaHTML(r,title,print){
  const met=Object.entries(r.por_metodo||{}).map(([k,v])=>'<div class="row"><span>'+esc(cap(k))+'</span><span>'+money(v)+'</span></div>').join("")||'<div class="mut">—</div>';
