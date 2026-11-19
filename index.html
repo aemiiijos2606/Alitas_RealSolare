@@ -31,6 +31,9 @@ button:disabled{opacity:.5;cursor:default}
 ul{margin:8px 0 0;padding-left:20px}
 .ph{width:72px;height:54px;object-fit:cover;border-radius:8px;flex:none;background:var(--ln)}
 .lft{display:flex;align-items:center;gap:12px;min-width:0}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.brand img{height:44px;max-width:140px;object-fit:contain;border-radius:8px}
+.Cancelado{color:#b91c1c}
 hr{border:0;border-top:1px dashed var(--ln);margin:10px 0}
 @media print{
  body *{visibility:hidden}
@@ -47,7 +50,15 @@ hr{border:0;border-top:1px dashed var(--ln);margin:10px 0}
 <script>
 const SB_URL="https://kgctfjaqcrplsgvpwncv.supabase.co";
 const SB_KEY="sb_publishable_s1g8dLamBa1LdSp4L0J7-w_nP5Ea4m2";
-const NOMBRE="Restaurante"; /* nombre que sale en el ticket: cámbialo por el de tu restaurante */
+const IVA=0.16; /* los precios del menú ya incluyen IVA y el ticket muestra el desglose. Pon 0 para ocultarlo */
+const NOMBRE="Burning Wings Solare";
+const LOGO="logo.png"; /* sube tu logo a GitHub con el nombre logo.png (junto a index.html). Si no existe, no se muestra */
+const INFO_CAT={
+ "Hamburguesas":"Carne de la casa y pan artesanal. Todas incluyen lechuga, jitomate, aguacate, cebolla caramelizada y chile toreado.",
+ "Jochos":"Salchicha de ave y pan artesanal. Todos incluyen jitomate, cebolla caramelizada y chile toreado.",
+ "Alitas, boneless y costillas":"Elige tu salsa y escríbela en la nota. Frutales: Mango, Piña, Tamarindo, Frambuesa. Tradicionales: BBQ, Buffalo, Valentina, Red Hot, Lemon Pepper, Tajín, Parmesano, Pelón Pelorico. Picantes: BBQ Chiltepín 🔥, BBQ Habanero 🔥, Mango Habanero 🔥🔥, Dinamita (habanero) 🔥🔥🔥, Hellcat (chiltepín y ajo) 🔥🔥🔥, V8 (chile de árbol cremoso) 🔥🔥🔥.",
+ "Tacos":"Orden de 3 tacos acompañados de guacamole, papas gajo y tortilla a mano. No se combinan."
+}; /* nombre que sale en el ticket: cámbialo por el de tu restaurante */
 const $=s=>document.querySelector(s);
 let cart={},mm="",nota="",abiertos={},nMesas=3,menu=[],orders=[],E=null,P={cuentas:[],llamadas:[]},tk=null;
 let A=null,pform=null,cajaRep=null,cerrando=null;
@@ -80,7 +91,7 @@ const rpc=(fn,body,auth)=>api("/rest/v1/rpc/"+fn,{method:"POST",body:body||{},au
 const money=n=>"$"+Number(n).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});
 const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 const noteLine=o=>o.nota?'<div class="note">📝 '+esc(o.nota)+'</div>':"";
-const tot=l=>l.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.p*i.q,0),0);
+const tot=l=>l.filter(o=>o.estado!=="Cancelado").reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.p*i.q,0),0);
 function cartItems(){return menu.filter(i=>cart[i.id]&&!i.agotado).map(i=>({id:i.id,n:i.nombre,p:Number(i.precio),q:cart[i.id]}))}
 function canSend(){return cartItems().length>0||nota.trim().length>0}
 let tt;function toast(msg,bad){const t=$("#toast");t.textContent=msg;t.style.background=bad?"#b91c1c":"#15803d";t.style.display="block";clearTimeout(tt);tt=setTimeout(()=>{t.style.display="none"},3500)}
@@ -108,12 +119,12 @@ async function load(force){
   const typing=document.activeElement&&/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
   if(loaded&&typing&&!force)return;
   sig=s;
-  if(R.t==="cliente"){menu=d.menu||[];E=d}else if(R.t==="admin")A=d;else{menu=d.menu||[];P=d;orders=d.pedidos||[]}
+  if(R.t==="cliente"){menu=d.menu||[];E=d}else if(R.t==="admin")A=d;else{menu=d.menu||[];P=d;orders=d.pedidos||[]}avisos(R,d);
   loaded=true;render();
  }catch(x){if(my===tok&&!loaded){errMsg=x.message;render()}}
  finally{if(my===tok)inflight=false}
 }
-function sync(){cart={};nota="";tk=null;cerrando=null;pform=null;cajaRep=null;loaded=false;sig="";errMsg="";tok++;inflight=false;const x=location.hash.match(/^#mesero-(\d+)$/);if(x)mm=x[1];render();load();getRol()}
+function sync(){cart={};nota="";tk=null;cerrando=null;pform=null;cajaRep=null;prevK=null;loaded=false;sig="";errMsg="";tok++;inflight=false;const x=location.hash.match(/^#mesero-(\d+)$/);if(x)mm=x[1];render();load();getRol();cargarMesas()}
 async function getRol(){if(!ses)return;try{const r=(await rpc("mi_rol",{},true))||"personal";const ch=!!ses&&ses.rol!==r;if(ses){ses.rol=r;setSes(ses)}if(ch){render();load()}}catch(e){}}
 const isAdmin=()=>!!ses&&ses.rol==="admin";
 addEventListener("hashchange",sync);
@@ -171,40 +182,41 @@ function setBase(v){v=v.trim().replace(/#.*$/,"");if(v){BASE=v;try{localStorage.
 
 /* ---------- vistas ---------- */
 function nav(){return '<nav><a class="b" href="#personal">Panel</a></nav>'}
-function landing(){return '<h1>Bienvenido</h1><p class="mut">Escanea el código QR que está en tu mesa para ver el menú y hacer tu pedido.</p>'}
+function landing(){return marca()+'<h1>Bienvenido</h1><p class="mut">Escanea el código QR que está en tu mesa para ver el menú y hacer tu pedido.</p>'}
 function gate(){return '<h1>Acceso del personal</h1><div class="card"><p><input id="em" type="email" placeholder="Correo" style="width:100%" autocomplete="username"></p><p><input id="pw" type="password" placeholder="Contraseña" style="width:100%" autocomplete="current-password" onkeydown="event.keyCode==13&&login()"></p><button onclick="login()">Entrar</button></div>'}
 function notaHTML(){return '<div class="card"><b>Nota para cocina</b> <span class="mut">(puedes enviarla sola)</span><textarea rows="2" placeholder="Ej. sin cebolla, alergia a las nueces…" oninput="upNota(this.value)">'+esc(nota)+'</textarea></div>'}
 function menuHTML(){
  const g={};menu.forEach(i=>{(g[i.categoria]=g[i.categoria]||[]).push(i)});
- return Object.keys(g).map(cat=>'<h2>'+(g[cat][0].promo?'🔥 ':'')+esc(cat)+'</h2>'+g[cat].map(i=>{
+ return Object.keys(g).map(cat=>'<h2>'+(g[cat][0].promo?'🔥 ':'')+esc(cat)+'</h2>'+(INFO_CAT[cat]?'<div class="mut" style="margin-bottom:6px">'+esc(INFO_CAT[cat])+'</div>':'')+g[cat].map(i=>{
   const pr=(i.precio_normal?'<s>'+money(i.precio_normal)+'</s> ':'')+'<b>'+money(i.precio)+'</b>'+(i.promo?' <span class="tag Listo">Promo</span>':'');
+  const dsc=i.descripcion?'<div class="mut">'+esc(i.descripcion)+'</div>':'';
   const img='<img class="ph" loading="lazy" alt="" src="'+fotoAttr(i)+'" onerror="this.onerror=null;this.src=GEN">';
-  if(i.agotado)return '<div class="card row" style="opacity:.6"><div class="lft">'+img+'<div>'+esc(i.nombre)+'<div class="mut">'+pr+'</div></div></div><span class="tag Nuevo">Agotado</span></div>';
-  return '<div class="card row"><div class="lft">'+img+'<div>'+esc(i.nombre)+'<div class="mut">'+pr+'</div></div></div><div class="row">'+
+  if(i.agotado)return '<div class="card row" style="opacity:.6"><div class="lft">'+img+'<div>'+esc(i.nombre)+dsc+'<div class="mut">'+pr+'</div></div></div><span class="tag Nuevo">Agotado</span></div>';
+  return '<div class="card row"><div class="lft">'+img+'<div>'+esc(i.nombre)+dsc+'<div class="mut">'+pr+'</div></div></div><div class="row">'+
   '<button class="g q" onclick="chg('+i.id+',-1)">−</button><b>'+(cart[i.id]||0)+'</b>'+
   '<button class="q" onclick="chg('+i.id+',1)">+</button></div></div>'}).join("")).join("")}
-function ordHTML(o){return '<div class="card"><div class="row"><b>Pedido #'+o.id+'</b><span class="tag '+o.estado+'">'+o.estado+'</span></div><div class="mut">'+itemsTxt(o)+'</div>'+noteLine(o)+'</div>'}
+function ordHTML(o){return '<div class="card"><div class="row"><b>Pedido #'+o.id+'</b><span class="tag '+o.estado+'">'+o.estado+'</span></div><div class="mut">'+itemsTxt(o)+'</div>'+noteLine(o)+(o.estado==="Nuevo"&&route().t==="cliente"?'<p><button class="g" onclick="cancelar('+o.id+')">Cancelar pedido</button></p>':'')+'</div>'}
 function detalle(o){if(!o.items.length)return '<div class="mut">Solo nota, sin artículos</div>';return abiertos[o.id]?'<ul>'+o.items.map(i=>'<li><b>'+i.q+'×</b> '+esc(i.n)+'</li>').join("")+'</ul>':'<div class="mut">'+o.items.reduce((s,i)=>s+i.q,0)+' artículos · toca para ver el detalle</div>'}
 function stockHTML(){return '<h2>Disponibilidad del menú</h2><div class="mut">Toca un platillo cuando se acabe para que ya no lo puedan pedir.</div>'+menu.map(i=>'<div class="card row"><span>'+esc(i.nombre)+'</span><button class="'+(i.agotado?'':'g')+'" onclick="toggleAgot('+i.id+')">'+(i.agotado?'Agotado · reactivar':'Marcar agotado')+'</button></div>').join("")}
 function ticketHTML(t){
  const f=d=>d?new Date(d).toLocaleString("es-MX",{dateStyle:"short",timeStyle:"short"}):"—";
  return '<div id="ticket" class="card" style="font-family:ui-monospace,Menlo,Consolas,monospace;max-width:380px;margin:12px auto">'+
- '<div style="text-align:center"><b>'+esc(NOMBRE)+'</b><div class="mut">Ticket #'+t.folio+' · Mesa '+t.mesa+'</div></div><hr>'+
+ '<div style="text-align:center">'+(LOGO?'<img src="'+esc(LOGO)+'" alt="" style="height:48px;max-width:100%;object-fit:contain" onerror="this.style.display=\'none\'"><br>':'')+'<b>'+esc(NOMBRE)+'</b><div class="mut">Ticket #'+t.folio+' · Mesa '+t.mesa+'</div></div><hr>'+
  '<div class="mut">Abierta: '+f(t.abierta_at)+'<br>'+(t.cerrada_at?'Cerrada: '+f(t.cerrada_at):'Cuenta abierta (aún no se cierra)')+(t.metodo?'<br>Pago: '+esc(cap(t.metodo)):'')+'</div><hr>'+
  (t.items.length?t.items.map(i=>'<div class="row"><span>'+i.q+'× '+esc(i.n)+'</span><span>'+money(i.sub)+'</span></div>').join(""):'<div class="mut">Sin artículos</div>')+
- '<hr><div class="row" style="font-size:18px"><b>TOTAL</b><b>'+money(t.total)+'</b></div>'+
- '<p class="mut" style="text-align:center;margin-bottom:0">¡Gracias por su visita!</p></div>'}
+ '<hr>'+ivaRows(t.total)+'<div class="row" style="font-size:18px"><b>TOTAL</b><b>'+money(t.total)+'</b></div>'+(IVA?'<div class="mut" style="text-align:center">Precios con IVA incluido</div>':'')+
+ '<p class="mut" style="text-align:center;margin-bottom:0">¡Gracias por su visita!<br>Este ticket no es una factura. Si la necesita, pídala al restaurante.</p></div>'}
 function qrHTML(){let h='<h2>Códigos QR de las mesas</h2><div class="card"><div class="mut">Uno por mesa. Cada código abre la vista de esa mesa.</div><p>Dirección pública de tu página: <input style="width:100%" value="'+esc(BASE)+'" onchange="setBase(this.value)"></p><p>Número de mesas: <input type="number" min="1" max="30" value="'+nMesas+'" onchange="nMesas=Math.min(30,Math.max(1,+this.value||1));render()"></p><div class="cols">';for(let n=1;n<=nMesas;n++)h+='<div style="text-align:center"><div class="qr" data-url="'+esc(BASE)+'#cliente-'+n+'" style="background:#fff;padding:8px;border-radius:8px;display:inline-block"></div><div><b>Mesa '+n+'</b></div></div>';return h+'</div></div>'}
 function drawQR(){if(!window.QRCode)return;document.querySelectorAll(".qr").forEach(el=>{el.innerHTML="";try{new QRCode(el,{text:el.dataset.url,width:140,height:140})}catch(e){}})}
 
-function home(){return '<h1>Panel del personal</h1><p><button class="g" onclick="logout()">Cerrar sesión</button></p><div class="mut">Tu rol: '+(ses.rol?(ses.rol==="admin"?"administrador":"personal"):"verificando…")+'</div>'+
+function home(){return marca()+'<h1>Panel del personal</h1><p><button class="g" onclick="logout()">Cerrar sesión</button></p><div class="mut">Tu rol: '+(ses.rol?(ses.rol==="admin"?"administrador":"personal"):"verificando…")+'</div>'+
  '<div class="card"><b>Mesero</b><div class="mut">Toma pedidos, atiende llamadas, ve tickets y cierra cuentas.</div><p><a class="b" href="#mesero">Abrir</a></p></div>'+
  '<div class="card"><b>Cocina</b><div class="mut">Recibe pedidos, cambia su estatus y marca lo que se acabó.</div><p><a class="b" href="#cocina">Abrir</a></p></div>'+
  (isAdmin()?'<div class="card"><b>Administración</b><div class="mut">Promociones, menú y cierre de caja (solo gerente).</div><p><a class="b" href="#admin">Promociones y menú</a> <a class="b" href="#admin-caja">Caja</a></p></div>':'')+
  '<div class="card"><b>Vista de cliente (prueba)</b><p><a class="b" href="#cliente-1">Mesa 1</a> <a class="b" href="#cliente-2">Mesa 2</a> <a class="b" href="#cliente-3">Mesa 3</a></p></div>'+qrHTML()}
 
 function cliente(m){
- const e=E.estado,head='<h1>Mesa '+m+'</h1>';
+ const e=E.estado,head=marca()+'<h1>Mesa '+m+'</h1>';
  if(e==="cerrada")return head+'<div class="mut">Tu cuenta ya fue cerrada. Este es tu ticket:</div>'+ticketHTML(E.ticket)+
   '<p style="text-align:center"><button onclick="window.print()">Imprimir ticket</button> <button class="g" onclick="nuevo()">Empezar un pedido nuevo</button></p>';
  const call='<button class="g" '+(E.llamada?"disabled":"")+' onclick="llamar()">'+(E.llamada?"🔔 Mesero avisado":"🔔 Llamar al mesero")+'</button>';
@@ -218,14 +230,14 @@ function cliente(m){
 
 function mesero(){
  const c=cartItems(),ct=c.reduce((s,i)=>s+i.p*i.q,0);
- let h='<nav><a class="b" href="#personal">Panel</a>'+(mm?'<a class="b" href="#cliente-'+esc(mm)+'">Vista de mesa '+esc(mm)+'</a>':"")+'</nav><h1>Mesero</h1>';
+ let h='<nav><a class="b" href="#personal">Panel</a>'+(mm?'<a class="b" href="#cliente-'+esc(mm)+'">Vista de mesa '+esc(mm)+'</a>':"")+'</nav><h1>Mesero</h1>'+sonidoBtn();
  if(cerrando)h+=cierreHTML();
  if(tk)h+=ticketHTML(tk)+'<p style="text-align:center"><button onclick="window.print()">Imprimir ticket</button> <button class="g" onclick="tk=null;render()">Ocultar ticket</button></p>';
  h+=(P.llamadas||[]).map(m=>'<div class="card row" style="border-color:#b91c1c"><b>🔔 Mesa '+esc(m)+' llama al mesero</b><button onclick="atender('+esc(m)+')">Ya voy</button></div>').join("");
  h+='<h2>Mesas con cuenta abierta</h2>';
  h+=(P.cuentas||[]).length?P.cuentas.map(cu=>{const l=orders.filter(o=>o.cuenta_id===cu.id);return '<div class="card"><div class="row"><b>Mesa '+cu.mesa+' · '+money(tot(l))+'</b><span class="row"><button class="g" onclick="verTicket('+cu.id+')">Ticket</button><button class="g" onclick="cerrar('+cu.mesa+')">Cerrar cuenta</button></span></div><div class="mut">Código de la mesa: <b>'+esc(cu.token)+'</b></div>'+
   l.map(o=>'<div class="row mut"><span>#'+o.id+' · '+itemsTxt(o)+(o.nota?' · 📝 '+esc(o.nota):"")+'</span><span class="row"><span class="tag '+o.estado+'">'+o.estado+'</span>'+
-  (o.estado==="Listo"?'<button onclick="setEstado('+o.id+',\'Entregado\')">Entregar</button>':"")+'</span></div>').join("")+'</div>'}).join(""):'<div class="mut">Aún no hay cuentas abiertas.</div>';
+  (o.estado==="Listo"?'<button onclick="setEstado('+o.id+',\'Entregado\')">Entregar</button>':"")+(["Nuevo","Preparando","Listo"].includes(o.estado)?'<button class="g" onclick="cancelar('+o.id+')">Cancelar</button>':"")+'</span></div>').join("")+'</div>'}).join(""):'<div class="mut">Aún no hay cuentas abiertas.</div>';
  h+='<h2>Tomar pedido</h2><div class="card">Mesa: <input id="mm" value="'+esc(mm)+'" inputmode="numeric" oninput="mm=this.value"></div>'+menuHTML()+notaHTML()+
  '<div class="card row"><b>Total: '+money(ct)+'</b><button class="snd" '+(canSend()?"":"disabled")+' onclick="send(mm)">Enviar a cocina</button></div>';
  return h}
@@ -234,7 +246,7 @@ function cocina(){
  const col=(e,sig,lbl)=>'<div><h2>'+(e==="Preparando"?"En preparación":e==="Nuevo"?"Nuevos":"Listos")+'</h2>'+
   (orders.filter(o=>o.estado===e).map(o=>'<div class="card open" onclick="tog('+o.id+')"><div class="row"><b>#'+o.id+' · Mesa '+o.mesa+'</b><span class="mut">'+(abiertos[o.id]?'▲':'▼')+'</span></div>'+noteLine(o)+detalle(o)+
   (sig?'<p><button onclick="event.stopPropagation();setEstado('+o.id+',\''+sig+'\')">'+lbl+'</button></p>':'<p class="mut">Esperando al mesero</p>')+'</div>').join("")||'<div class="mut">Sin pedidos</div>')+'</div>';
- return nav()+'<h1>Cocina</h1><div class="cols">'+col("Nuevo","Preparando","Empezar")+col("Preparando","Listo","Marcar listo")+col("Listo",null)+'</div>'+stockHTML()}
+ return nav()+'<h1>Cocina</h1>'+sonidoBtn()+'<div class="cols">'+col("Nuevo","Preparando","Empezar")+col("Preparando","Listo","Marcar listo")+col("Listo",null)+'</div>'+stockHTML()}
 
 /* ---------- administración (solo gerente) ---------- */
 const fmt=d=>d?new Date(d).toLocaleString("es-MX",{dateStyle:"short",timeStyle:"short"}):"—";
@@ -245,12 +257,12 @@ function cierreHTML(){
  ["efectivo","tarjeta","transferencia"].map(x=>'<button class="'+(cerrando.metodo===x?'':'g')+'" onclick="setMetodo(\''+x+'\')">'+cap(x)+'</button>').join(" ")+
  '</p><p><button onclick="confirmarCierre()">Confirmar y generar ticket</button> <button class="g" onclick="cerrando=null;render()">Cancelar</button></p></div>'}
 function adminNav(){return '<nav><a class="b" href="#personal">Panel</a><a class="b" href="#admin">Promociones y menú</a><a class="b" href="#admin-caja">Caja</a></nav>'}
-function nuevoProd(promo){pform={id:null,nombre:"",categoria:promo?"Promociones":"",precio:"",promo:promo,precio_normal:"",desde:"",hasta:"",activo:true,foto:""};render();scrollTo(0,0)}
+function nuevoProd(promo){pform={id:null,nombre:"",categoria:promo?"Promociones":"",precio:"",promo:promo,precio_normal:"",desde:"",hasta:"",activo:true,foto:"",descripcion:""};render();scrollTo(0,0)}
 function editar(id){const p=A.find(x=>x.id===id);if(!p)return;
- pform={id:p.id,nombre:p.nombre,categoria:p.categoria,precio:p.precio,promo:p.promo,precio_normal:p.precio_normal==null?"":p.precio_normal,desde:fi(p.vigente_desde),hasta:fi(p.vigente_hasta),activo:p.activo,foto:p.foto_url||""};render();scrollTo(0,0)}
+ pform={id:p.id,nombre:p.nombre,categoria:p.categoria,precio:p.precio,promo:p.promo,precio_normal:p.precio_normal==null?"":p.precio_normal,desde:fi(p.vigente_desde),hasta:fi(p.vigente_hasta),activo:p.activo,foto:p.foto_url||"",descripcion:p.descripcion||""};render();scrollTo(0,0)}
 async function guardarProd(){
  const f=pform;
- try{await rpc("admin_guardar_producto",{p_id:f.id,p_nombre:f.nombre,p_categoria:f.categoria,p_precio:+f.precio,p_promo:f.promo,p_precio_normal:f.promo&&f.precio_normal!==""?+f.precio_normal:null,p_desde:f.promo&&f.desde?new Date(f.desde).toISOString():null,p_hasta:f.promo&&f.hasta?new Date(f.hasta).toISOString():null,p_activo:f.activo,p_foto:f.foto||null},true);
+ try{await rpc("admin_guardar_producto",{p_id:f.id,p_nombre:f.nombre,p_categoria:f.categoria,p_precio:+f.precio,p_promo:f.promo,p_precio_normal:f.promo&&f.precio_normal!==""?+f.precio_normal:null,p_desde:f.promo&&f.desde?new Date(f.desde).toISOString():null,p_hasta:f.promo&&f.hasta?new Date(f.hasta).toISOString():null,p_activo:f.activo,p_foto:f.foto||null,p_descripcion:f.descripcion||null},true);
   pform=null;toast("✅ Guardado");await load(true)}catch(x){toast(x.message,true)}}
 async function activar(id,on){try{await rpc("admin_activar_producto",{p_id:id,p_activo:on},true);await load(true)}catch(x){toast(x.message,true)}}
 async function eliminar(id){
@@ -267,11 +279,12 @@ refresco:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect wi
 cerveza:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#fef3c7"/><path d="M125 55h14a12 12 0 0 1 12 12v16a12 12 0 0 1-12 12h-14" fill="none" stroke="#d97706" stroke-width="8"/><path d="M65 40h60v70a10 10 0 0 1-10 10H75a10 10 0 0 1-10-10z" fill="#f59e0b"/><rect x="74" y="52" width="6" height="58" rx="3" fill="#fde68a" fill-opacity=".6"/><circle cx="75" cy="36" r="12" fill="#fff"/><circle cx="95" cy="30" r="14" fill="#fff"/><circle cx="115" cy="36" r="12" fill="#fff"/><circle cx="100" cy="80" r="3" fill="#fde68a"/><circle cx="108" cy="95" r="2.5" fill="#fde68a"/></svg>`,
 flan:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#fff1e0"/><ellipse cx="100" cy="112" rx="72" ry="14" fill="#fff"/><path d="M55 110q0-50 45-50q45 0 45 50z" fill="#f6c453"/><path d="M58 92q0-32 42-32q42 0 42 32q-8 10-14 0q-8 12-16 0q-8 10-16 0q-8 12-16 0q-8 10-14 0q-6 6-8 0z" fill="#b45309"/><circle cx="84" cy="72" r="5" fill="#fff" fill-opacity=".35"/></svg>`,
 michelada:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#ffedd5"/><path d="M65 52h70l-6 66H71z" fill="#f97316"/><rect x="76" y="64" width="14" height="14" rx="3" fill="#fff" fill-opacity=".45"/><rect x="104" y="80" width="14" height="14" rx="3" fill="#fff" fill-opacity=".45"/><path d="M62 30h76l-9 90H71z" fill="#fff" fill-opacity=".3" stroke="#7c2d12" stroke-width="3"/><rect x="60" y="26" width="80" height="9" rx="4" fill="#dc2626"/><path d="M118 24a26 26 0 0 1 26 26h-26z" fill="#fbbf24"/><circle cx="80" cy="28" r="9" fill="#84cc16"/><circle cx="80" cy="28" r="5" fill="#d9f99d"/></svg>`,
+alitas:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#fff4e0"/><path d="M45 85h110l-10 36H55z" fill="#7c4a1e"/><path d="M50 95h100M52 105h96" stroke="#a16207" stroke-width="3"/><g fill="#c2410c"><ellipse cx="75" cy="78" rx="24" ry="15" transform="rotate(-20 75 78)"/><ellipse cx="115" cy="72" rx="24" ry="15" transform="rotate(15 115 72)"/><ellipse cx="95" cy="62" rx="22" ry="14" transform="rotate(-5 95 62)"/></g><g fill="#fde68a"><circle cx="58" cy="70" r="5"/><circle cx="136" cy="62" r="5"/></g><path d="M80 56q10-8 22 0" stroke="#fbbf24" stroke-width="3" fill="none" stroke-linecap="round"/></svg>`,
 gen:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140"><rect width="200" height="140" fill="#f5f5f4"/><circle cx="100" cy="70" r="40" fill="#fff" stroke="#d6d3d1" stroke-width="4"/><circle cx="100" cy="70" r="26" fill="none" stroke="#e7e5e4" stroke-width="3"/><path d="M44 38v18q0 7 6 7v34M156 38q12 12 0 36v24" stroke="#a8a29e" stroke-width="4" fill="none" stroke-linecap="round"/></svg>`};
-const DEMO=[[/michelada/i,"michelada"],[/taco/i,"tacos"],[/enchilada/i,"enchiladas"],[/hamburgues/i,"hamburguesa"],[/ensalada/i,"ensalada"],[/jamaica/i,"jamaica"],[/refresco|soda|cola/i,"refresco"],[/cerveza/i,"cerveza"],[/flan/i,"flan"]];
+const DEMO=[[/michelada/i,"michelada"],[/taco/i,"tacos"],[/enchilada/i,"enchiladas"],[/hamburgues/i,"hamburguesa"],[/ensalada/i,"ensalada"],[/jamaica/i,"jamaica"],[/refresco|soda|cola/i,"refresco"],[/cerveza/i,"cerveza"],[/flan/i,"flan"],[/alita|boneless|costilla/i,"alitas"]];
 const svgUri=k=>"data:image/svg+xml;utf8,"+encodeURIComponent(SVG[k]);
 const GEN=svgUri("gen");
-const fotoDe=p=>p.foto_url||svgUri((DEMO.find(d=>d[0].test(p.nombre||""))||[0,"gen"])[1]);
+const fotoDe=p=>p.foto_url||svgUri((DEMO.find(d=>d[0].test((p.nombre||"")+" "+(p.categoria||"")))||[0,"gen"])[1]);
 const fotoAttr=p=>esc(fotoDe(p)).replace(/"/g,"&quot;");
 function achicar(file){return new Promise((ok,no)=>{
  const img=new Image(),u=URL.createObjectURL(file);
@@ -297,6 +310,7 @@ function formHTML(){const f=pform;
  '<p>Nombre<br><input style="width:100%" value="'+esc(f.nombre)+'" oninput="pform.nombre=this.value"></p>'+
  '<p>Categoría<br><input style="width:100%" list="cats" value="'+esc(f.categoria)+'" oninput="pform.categoria=this.value"><datalist id="cats">'+[...new Set(A.map(p=>p.categoria))].map(c=>'<option value="'+esc(c)+'">').join("")+'</datalist></p>'+
  '<p>Precio ($)<br><input type="number" min="0" step="0.5" value="'+esc(f.precio)+'" oninput="pform.precio=this.value"></p>'+
+ '<p>Descripción (opcional)<br><textarea rows="2" oninput="pform.descripcion=this.value">'+esc(f.descripcion)+'</textarea></p>'+
  '<p>Foto (opcional)<br><img class="ph" style="width:140px;height:100px" alt="" src="'+fotoAttr({nombre:f.nombre,foto_url:f.foto})+'" onerror="this.onerror=null;this.src=GEN"><br><span class="mut">'+(f.foto?'Foto subida':'Ilustración de ejemplo: sube tu foto para reemplazarla')+'</span><br><input type="file" accept="image/*" style="width:100%" onchange="subirFoto(this)">'+(f.foto?' <button class="g" onclick="quitarFoto()">Quitar foto</button>':'')+'</p>'+
  '<p><label><input type="checkbox" style="width:auto" '+(f.promo?"checked":"")+' onchange="pform.promo=this.checked;render()"> Es promoción (opcional)</label></p>'+
  (f.promo?'<div class="card"><p>Precio normal (opcional, se muestra tachado)<br><input type="number" min="0" step="0.5" value="'+esc(f.precio_normal)+'" oninput="pform.precio_normal=this.value"></p>'+
@@ -307,6 +321,7 @@ function formHTML(){const f=pform;
 function adminMenu(){
  let h=adminNav()+'<h1>Promociones y menú</h1><p><button onclick="nuevoProd(true)">+ Nueva promoción</button> <button class="g" onclick="nuevoProd(false)">+ Nuevo producto</button></p>';
  if(pform)h+=formHTML();
+ h+=mesasHTML();
  h+=A.map(p=>'<div class="card"><div class="row"><div class="lft"><img class="ph" loading="lazy" alt="" src="'+fotoAttr(p)+'" onerror="this.onerror=null;this.src=GEN"><div><b>'+esc(p.nombre)+'</b> '+(p.promo?'<span class="tag Listo">Promo</span> ':'')+
   (!p.activo?'<span class="tag Entregado">Inactivo</span>':!p.visible?'<span class="tag Nuevo">Fuera de vigencia</span>':'<span class="tag Listo">Visible</span>')+
   '<div class="mut">'+esc(p.categoria)+' · '+(p.precio_normal?'<s>'+money(p.precio_normal)+'</s> ':'')+money(p.precio)+
@@ -319,22 +334,67 @@ function cajaHTML(r,title,print){
  return '<div'+(print?' id="ticket"':'')+' class="card" style="max-width:480px"><b>'+esc(title)+'</b>'+
  '<div class="mut">'+(r.desde?'Desde: '+fmt(r.desde)+'<br>':'')+(r.cerrado_at?'Cierre: '+fmt(r.cerrado_at):'Hasta este momento')+'</div><hr>'+
  '<div class="row"><span>Cuentas cerradas</span><b>'+r.cuentas+'</b></div><div class="row"><span>Pedidos</span><b>'+r.pedidos+'</b></div><hr>'+
- '<div class="row" style="font-size:20px"><b>Dinero ingresado</b><b>'+money(r.ventas)+'</b></div><hr><b>Por método de pago</b>'+met+'<hr><b>Por producto</b>'+prod+'</div>'}
+ '<div class="row" style="font-size:20px"><b>Dinero ingresado</b><b>'+money(r.ventas)+'</b></div>'+ivaRows(r.ventas)+'<hr><b>Por método de pago</b>'+met+'<hr><b>Por producto</b>'+prod+'</div>'}
 async function cerrarCaja(){
  if(!confirm("¿Cerrar la caja? Se guardará el corte con las ventas actuales."))return;
  try{cajaRep=await rpc("cerrar_caja",{},true);toast("✅ Caja cerrada");await load(true);render();scrollTo(0,0)}catch(x){toast(x.message,true)}}
 function verCierre(id){const h=(A.historial||[]).find(x=>x.id===id);if(!h)return;
  cajaRep={folio:h.id,desde:h.desde,cerrado_at:h.created_at,cuentas:h.cuentas,pedidos:h.pedidos,ventas:h.ventas,por_metodo:h.por_metodo,por_producto:h.por_producto};render();scrollTo(0,0)}
+function desgloseIVA(total){const r=n=>Math.round(n*100)/100,t=Number(total)||0,sub=IVA?r(t/(1+IVA)):t;return{sub:sub,iva:r(t-sub)}}
+function ivaRows(total){if(!IVA)return"";const d=desgloseIVA(total);
+ return '<div class="row mut"><span>Subtotal</span><span>'+money(d.sub)+'</span></div><div class="row mut"><span>IVA '+Math.round(IVA*100)+'%</span><span>'+money(d.iva)+'</span></div>'}
+async function exportar(id){
+ try{
+  const t=await rpc("tickets_cierre",id?{p_cierre:id}:{},true);
+  if(!t.length){toast("No hay tickets para exportar",true);return}
+  const q=v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"';
+  const f=d=>{if(!d)return"";const x=new Date(d);x.setMinutes(x.getMinutes()-x.getTimezoneOffset());return x.toISOString().slice(0,16).replace("T"," ")};
+  const rows=[["Folio","Mesa","Apertura","Cierre","Método de pago","Subtotal","IVA","Total"]];
+  t.forEach(c=>{const d=desgloseIVA(c.total);rows.push([c.folio,c.mesa,f(c.abierta_at),f(c.cerrada_at),cap(c.metodo),d.sub.toFixed(2),d.iva.toFixed(2),Number(c.total).toFixed(2)])});
+  const csv="\ufeff"+rows.map(r=>r.map(q).join(",")).join("\r\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  a.download=(id?"cierre-"+id:"tickets-pendientes")+".csv";document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);toast("✅ Archivo descargado (ábrelo con Excel)");
+ }catch(x){toast(x.message,true)}}
 function adminCaja(){
  const a=A.actual,his=A.historial||[];
  let h=adminNav()+'<h1>Caja</h1>';
- if(cajaRep)h+=cajaHTML(cajaRep,"Corte de caja #"+cajaRep.folio,true)+'<p style="text-align:center"><button onclick="window.print()">Imprimir corte</button> <button class="g" onclick="cajaRep=null;render()">Ocultar</button></p>';
+ if(cajaRep)h+=cajaHTML(cajaRep,"Corte de caja #"+cajaRep.folio,true)+'<p style="text-align:center"><button onclick="window.print()">Imprimir corte</button> <button class="g" onclick="exportar('+cajaRep.folio+')">Tickets (Excel)</button> <button class="g" onclick="cajaRep=null;render()">Ocultar</button></p>';
  h+='<h2>Ventas desde el último cierre</h2>';
  h+=a.cuentas?cajaHTML(a,"Resumen actual",false):'<div class="mut">No hay ventas nuevas por cerrar.</div>';
  if(a.abiertas)h+='<div class="card" style="border-color:#b91c1c">Hay <b>'+a.abiertas+'</b> cuenta(s) abierta(s). Pide al mesero que las cierre para poder cerrar la caja.</div>';
- h+='<p><button '+(a.cuentas&&!a.abiertas?"":"disabled")+' onclick="cerrarCaja()">Cerrar caja</button></p>';
- h+='<h2>Cierres anteriores</h2>'+(his.length?his.map(x=>'<div class="card row"><span>#'+x.id+' · '+fmt(x.created_at)+'<div class="mut">'+x.cuentas+' cuentas · '+x.pedidos+' pedidos</div></span><span class="row"><b>'+money(x.ventas)+'</b><button class="g" onclick="verCierre('+x.id+')">Ver</button></span></div>').join(""):'<div class="mut">Aún no hay cierres.</div>');
+ h+='<p><button '+(a.cuentas&&!a.abiertas?"":"disabled")+' onclick="cerrarCaja()">Cerrar caja</button> <button class="g" '+(a.cuentas?"":"disabled")+' onclick="exportar(null)">Descargar tickets pendientes (Excel)</button></p>';
+ h+='<h2>Cierres anteriores</h2>'+(his.length?his.map(x=>'<div class="card row"><span>#'+x.id+' · '+fmt(x.created_at)+'<div class="mut">'+x.cuentas+' cuentas · '+x.pedidos+' pedidos</div></span><span class="row"><b>'+money(x.ventas)+'</b><button class="g" onclick="verCierre('+x.id+')">Ver</button><button class="g" onclick="exportar('+x.id+')">Excel</button></span></div>').join(""):'<div class="mut">Aún no hay cierres.</div>');
  return h}
+
+/* ---------- marca, avisos sonoros, cancelar y mesas ---------- */
+function marca(){return '<div class="brand">'+(LOGO?'<img src="'+esc(LOGO)+'" alt="" onerror="this.style.display=\'none\'">':'')+'<b>'+esc(NOMBRE)+'</b></div>'}
+let AC=null,sonido=false,prevK=null;try{sonido=localStorage.getItem("qr_sonido")==="1"}catch(e){}
+function ctx(){if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(C)AC=new C()}return AC}
+function beep(){const c=ctx();if(!c)return;if(c.state==="suspended")c.resume();
+ [0,.25,.5].forEach((d,i)=>{const o=c.createOscillator(),g=c.createGain();o.frequency.value=i%2?880:1175;g.gain.value=.25;o.connect(g);g.connect(c.destination);o.start(c.currentTime+d);o.stop(c.currentTime+d+.18)})}
+function toggleSonido(){sonido=!sonido;try{localStorage.setItem("qr_sonido",sonido?"1":"0")}catch(e){}if(sonido){ctx();beep()}render()}
+function sonidoBtn(){return '<p><button class="g" onclick="toggleSonido()">'+(sonido?'🔔 Sonido activado':'🔕 Activar sonido de avisos')+'</button></p>'}
+document.addEventListener("click",()=>{if(sonido){const c=ctx();if(c&&c.state==="suspended")c.resume()}});
+function avisos(R,d){
+ const k=new Set();
+ if(R.t==="cocina"){(d.pedidos||[]).forEach(o=>{if(o.estado==="Nuevo")k.add("p"+o.id)})}
+ else if(R.t==="mesero"){(d.llamadas||[]).forEach(m=>k.add("l"+m));(d.pedidos||[]).forEach(o=>{if(o.estado==="Listo")k.add("p"+o.id)})}
+ else{document.title=NOMBRE;prevK=null;return}
+ document.title=(k.size?"("+k.size+") ":"")+(R.t==="cocina"?"Cocina":"Mesero")+" · "+NOMBRE;
+ if(prevK&&[...k].some(x=>!prevK.has(x))){if(sonido)beep();toast(R.t==="cocina"?"🔔 Nuevo pedido":"🔔 Hay algo que atender")}
+ prevK=k}
+async function cancelar(id){
+ if(!confirm("¿Cancelar este pedido?"))return;
+ const R=route();
+ try{await rpc("cancelar_pedido",{p_id:id,p_token:R.t==="cliente"?getTok(R.m):""},R.t!=="cliente");toast("Pedido cancelado");await load(true)}catch(x){toast(x.message,true)}}
+async function cargarMesas(){
+ const t=route().t;if(t!=="personal"&&t!=="admin")return;
+ try{const n=await rpc("mesas_total");if(n){nMesas=n;render()}}catch(e){}}
+function mesasHTML(){return '<div class="card row"><span>Mesas del restaurante</span><span class="row"><input id="nm" type="number" min="1" max="60" value="'+nMesas+'" style="width:80px"><button onclick="guardarMesas()">Guardar</button></span></div>'}
+async function guardarMesas(){
+ const n=parseInt($("#nm").value,10);if(!(n>=1&&n<=60)){toast("Escribe un número de 1 a 60",true);return}
+ try{await rpc("admin_set_mesas",{p_n:n},true);nMesas=n;toast("✅ Mesas guardadas: "+n)}catch(x){toast(x.message,true)}}
 
 function render(){
  const R=route(),el=$("#app");let h;
